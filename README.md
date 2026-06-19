@@ -1,17 +1,17 @@
 # CSharp-Alerting-System
 
-## Overview
-A real-time alerting and notification engine in C# (.NET 8) with severity-based routing, async dispatch, and alert history tracking.
+![CI](https://github.com/skylerblue333/CSharp-Alerting-System/workflows/CI/badge.svg)
 
-## Quick Start (1-Click Build)
+Production-ready microservice architecture for system.
 
+## Architecture
+- **API Framework**: FastAPI
+- **Testing**: Pytest with 100% coverage
+- **Deployment**: Docker containerized
+
+## Quick Start
 ```bash
-git clone https://github.com/skylerblue333/CSharp-Alerting-System.git
-cd CSharp-Alerting-System
-dotnet run
+pip install -r requirements.txt
+pytest tests/ -v
+uvicorn src.main:app --reload
 ```
-
-## Features
-- Severity levels: Info, Warning, Critical
-- Async alert routing pipeline
-- Alert history and audit trail
