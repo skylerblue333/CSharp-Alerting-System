@@ -1,53 +1,31 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
+using System.Collections.Concurrent;
 
-namespace AlertingSystem
-{
-    public enum Severity { Info, Warning, Critical }
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
 
-    public record Alert(string Id, string Message, Severity Severity, DateTime Timestamp);
+var alerts = new ConcurrentQueue<object>();
 
-    public class AlertEngine
-    {
-        private readonly List<Alert> _history = new();
+app.MapPost("/api/v1/alert", async (HttpContext context) => {
+    using var doc = await JsonDocument.ParseAsync(context.Request.Body);
+    var root = doc.RootElement;
+    
+    var metric = root.TryGetProperty("metric", out var m) ? m.GetString() : "unknown";
+    var value = root.TryGetProperty("value", out var v) ? v.GetDouble() : 0;
+    var threshold = root.TryGetProperty("threshold", out var t) ? t.GetDouble() : 100;
+    
+    var severity = value > threshold * 1.5 ? "critical" : value > threshold ? "warning" : "ok";
+    var alert = new { metric, value, threshold, severity, timestamp = DateTimeOffset.UtcNow };
+    
+    if (severity != "ok") alerts.Enqueue(alert);
+    
+    await context.Response.WriteAsJsonAsync(alert);
+});
 
-        public async Task<bool> FireAlert(string message, Severity severity)
-        {
-            var alert = new Alert(
-                Id: Guid.NewGuid().ToString("N")[..8],
-                Message: message,
-                Severity: severity,
-                Timestamp: DateTime.UtcNow
-            );
+app.MapGet("/api/v1/alerts", () => alerts.ToArray());
+app.MapGet("/health", () => new { status = "healthy", version = "3.0.0" });
 
-            _history.Add(alert);
-            await RouteAlert(alert);
-            return true;
-        }
-
-        private async Task RouteAlert(Alert alert)
-        {
-            await Task.Delay(50); // Simulate async dispatch
-            string icon = alert.Severity switch
-            {
-                Severity.Critical => "🔴",
-                Severity.Warning  => "🟡",
-                _                 => "🔵"
-            };
-            Console.WriteLine($"[{alert.Severity}] {icon} [{alert.Id}] {alert.Message} @ {alert.Timestamp:HH:mm:ss}");
-        }
-    }
-
-    class Program
-    {
-        static async Task Main()
-        {
-            var engine = new AlertEngine();
-            Console.WriteLine("=== Alerting System Online ===\n");
-            await engine.FireAlert("CPU usage at 95%", Severity.Critical);
-            await engine.FireAlert("Memory usage at 78%", Severity.Warning);
-            await engine.FireAlert("Health check passed", Severity.Info);
-        }
-    }
-}
+app.Run("http://0.0.0.0:8080");
