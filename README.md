@@ -1,44 +1,73 @@
-<!-- PORTFOLIO PROJECT PROFILE: maintained by the repository owner -->
+# CSharp-Alerting-System
 
-## Project profile and code-audit snapshot
+A small ASP.NET Core 8 alert-evaluation service for the SKYCOIN4444 ecosystem.
 
-**What this is:** **CSharp-Alerting-System** is a public repository described as: “Real-time alerting and notification engine in C#. #SkyCoin4444 #AI #Blockchain #DevOps #Innovation” Its dominant language signals are **C# (1 files)**.
+## Current implementation
 
-**Why it has value:** Its value is best understood through the implementation evidence currently present in the repository: **15 tracked files** were observed in the shallow audit, with the source structure and existing documentation providing the project’s specific context. This README does not treat a prototype, experiment, or archive as a production system without supporting evidence.
+- `POST /api/v1/alert` evaluates a metric against a threshold.
+- Severity is `ok`, `warning`, or `critical`.
+- Non-OK alerts are retained in a bounded in-memory queue (maximum 1,000 alerts).
+- `GET /api/v1/alerts` returns retained alerts.
+- `GET /health` reports service health.
+- Request validation rejects empty/overlong metric names and non-finite numeric values.
 
-**Implementation evidence:** No test-related file was detected by filename heuristics.; 2 dependency or package manifest(s) detected; 2 build/CI/infrastructure signal(s) detected; and 3 documentation or governance file(s) detected. Test filenames observed include none detected. Dependency or package files include `CSharp-Alerting-System.csproj`, `package.json`. Build, CI, or infrastructure signals include `Dockerfile`, `.github/workflows/ci.yml`.
+## Example
 
-**Current status:** The repository is tracked on the `main` branch. The existing source tree, configuration, tests, workflows, and documentation remain authoritative for supported behavior and maturity. A code audit is not a production-readiness certification, and the presence of a test or workflow file does not establish that all checks pass.
+```bash
+curl -X POST http://localhost:8080/api/v1/alert \
+  -H 'Content-Type: application/json' \
+  -d '{"metric":"cpu","value":92,"threshold":80}'
+```
 
-**Relationship to the wider portfolio:** This repository is one focused component of the broader Skyler Blue Spillers portfolio across AI, software engineering, cloud and DevOps, cybersecurity, blockchain, finance, education, social systems, and creative work. It may provide a service boundary, implementation pattern, experiment, archive, or reusable idea for related repositories. Treat repositories as technical dependencies only where documented interfaces and verified project requirements support that relationship.
+## Setup
 
-**Quality and security note:** No obvious secret-like pattern was detected by the limited static scan; this is not a substitute for a security audit. No TODO/FIXME marker was detected in the scanned text files.
+Requires .NET 8 SDK.
 
----
+```bash
+dotnet restore
+dotnet run
+```
 
-# Csharp Alerting System
+The service listens on port `8080`.
 
-![GitHub stars](https://img.shields.io/github/stars/skylerblue333/CSharp-Alerting-System?style=flat-square)
-![GitHub license](https://img.shields.io/github/license/skylerblue333/CSharp-Alerting-System?style=flat-square)
+## Testing
 
-## 🌟 Overview
-**CSharp-Alerting-System** is a professional-grade project within the **SkyCoin4444** ecosystem. It focuses on delivering high-value solutions in the domain of **Software Development**.
+A production-quality test suite is not currently present. Do not interpret the API implementation or CI configuration as proof of complete test coverage or production readiness.
 
-## 🚀 Key Features
-- **Scalable Architecture**: Designed for enterprise-level growth and performance.
-- **Modern Standards**: Implements best practices for clean code and maintainability.
-- **Robust Integration**: Built to work seamlessly within modern cloud-native environments.
+## Production limitations
 
-## 🛠️ Technology Stack
-- **Primary Domain**: Software Development
-- **Ecosystem**: SkyCoin4444 Digital Platform
+This repository currently uses in-memory storage. Alerts are lost when the process restarts. It does not yet provide durable persistence, authentication/authorization, external notification providers, distributed coordination, or production observability.
 
-## 📂 Structure
-The project is organized into a modular structure to ensure clarity and ease of development.
+Those capabilities belong in the wider SKYCOIN4444 alerting/notification architecture and should be added only with appropriate contracts and tests.
 
-## 👨‍💻 Author
-**Skyler Blue Spillers**
-*Professional Chess Player & Software Engineer*
+## Architecture role
 
----
-*Powered by SkyCoin4444*
+```text
+Metrics / Services
+        ↓
+Alert Evaluation
+        ↓
+Bounded Alert Store
+        ↓
+Events / Notification Adapters
+```
+
+This repository is a focused alert-evaluation primitive, not a complete enterprise alerting platform.
+
+## License
+
+See the repository `LICENSE` file if present. Third-party dependencies remain subject to their respective licenses.
+
+## Authorship
+
+Developed by **Skyler Blue Spillers**, with assistance from humans, open-source software, automation, and occasionally robot slaves. 🤖
+
+**AI-assisted ≠ solely AI-authored.**
+
+## SKYCOIN4444
+
+- Website: https://skycoin4444.com
+- Network: https://skycoin4444.net
+- Shop: https://skycoin4444.shop
+- Token: https://skycoin44.token
+- GitHub: https://github.com/skylerblue333
