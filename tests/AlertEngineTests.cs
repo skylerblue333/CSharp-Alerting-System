@@ -1,4 +1,5 @@
 using Skycoin.Alerting;
+using Xunit;
 
 namespace Skycoin.Alerting.Tests;
 
