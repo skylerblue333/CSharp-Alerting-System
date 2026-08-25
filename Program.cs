@@ -1,43 +1,69 @@
-using System.Collections.Concurrent;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
+using Skycoin.Alerting;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 16 * 1024);
+
 var app = builder.Build();
+var store = new AlertStore(capacity: 1000);
+var evaluatedTotal = 0L;
+var rejectedTotal = 0L;
 
-var alerts = new ConcurrentQueue<Alert>();
-const int maxAlerts = 1000;
-
-app.MapPost("/api/v1/alert", (AlertRequest request) =>
+app.Use(async (context, next) =>
 {
-    if (string.IsNullOrWhiteSpace(request.Metric) || request.Metric.Length > 200)
-        return Results.BadRequest(new { error = "metric must contain 1-200 characters" });
-    if (double.IsNaN(request.Value) || double.IsInfinity(request.Value) ||
-        double.IsNaN(request.Threshold) || double.IsInfinity(request.Threshold))
-        return Results.BadRequest(new { error = "value and threshold must be finite numbers" });
-
-    var severity = request.Value > request.Threshold * 1.5
-        ? "critical"
-        : request.Value > request.Threshold
-            ? "warning"
-            : "ok";
-
-    var alert = new Alert(
-        request.Metric.Trim(), request.Value, request.Threshold, severity, DateTimeOffset.UtcNow);
-
-    if (severity != "ok")
-    {
-        alerts.Enqueue(alert);
-        while (alerts.Count > maxAlerts && alerts.TryDequeue(out _)) { }
-    }
-
-    return Results.Ok(alert);
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["Cache-Control"] = "no-store";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    await next();
 });
 
-app.MapGet("/api/v1/alerts", () => Results.Ok(alerts.ToArray()));
-app.MapGet("/health", () => Results.Ok(new { status = "healthy", version = "3.1.0" }));
+IResult Evaluate(AlertRequest request)
+{
+    try
+    {
+        var evaluation = AlertEngine.Evaluate(request.Metric ?? string.Empty, request.Value, request.Threshold);
+        Interlocked.Increment(ref evaluatedTotal);
+
+        StoredAlert? persisted = null;
+        if (evaluation.Severity is AlertSeverity.Warning or AlertSeverity.Critical)
+        {
+            persisted = store.Add(evaluation, DateTimeOffset.UtcNow);
+        }
+
+        app.Logger.LogInformation(
+            "evaluated metric {Metric} with severity {Severity}",
+            evaluation.Metric,
+            evaluation.Severity);
+
+        return Results.Ok(new
+        {
+            metric = evaluation.Metric,
+            value = evaluation.Value,
+            threshold = evaluation.Threshold,
+            severity = evaluation.Severity.ToString().ToLowerInvariant(),
+            alert = persisted
+        });
+    }
+    catch (ArgumentException exception)
+    {
+        Interlocked.Increment(ref rejectedTotal);
+        return Results.BadRequest(new { error = exception.Message });
+    }
+}
+
+app.MapPost("/api/v1/evaluate", Evaluate);
+app.MapPost("/api/v1/alert", Evaluate); // compatibility route
+app.MapGet("/api/v1/alerts", () => Results.Ok(store.Snapshot()));
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "sky-alert-engine" }));
+app.MapGet("/ready", () => Results.Ok(new { status = "ready", capacity = store.Capacity }));
+app.MapGet("/metrics", () => Results.Ok(new
+{
+    evaluated_total = Interlocked.Read(ref evaluatedTotal),
+    rejected_total = Interlocked.Read(ref rejectedTotal),
+    alerts_retained = store.Count,
+    alerts_evicted = store.Evicted,
+    alert_capacity = store.Capacity
+}));
 
 app.Run("http://0.0.0.0:8080");
 
-record AlertRequest(string? Metric, double Value, double Threshold);
-record Alert(string Metric, double Value, double Threshold, string Severity, DateTimeOffset Timestamp);
+public sealed record AlertRequest(string? Metric, double Value, double Threshold);

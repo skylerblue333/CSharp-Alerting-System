@@ -1,11 +1,43 @@
-name: CI
-on: [push, pull_request]
+name: alert-engine-ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-dotnet@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - run: dotnet build
+      - name: Restore application
+        run: dotnet restore CSharp-Alerting-System.csproj --locked-mode || dotnet restore CSharp-Alerting-System.csproj
+      - name: Restore tests
+        run: dotnet restore tests/Alerting.Tests.csproj
+      - name: Release build
+        run: dotnet build CSharp-Alerting-System.csproj -c Release --no-restore
+      - name: Tests
+        run: dotnet test tests/Alerting.Tests.csproj -c Release --no-restore
+      - name: Vulnerable dependency check
+        run: dotnet list CSharp-Alerting-System.csproj package --vulnerable --include-transitive
+      - name: Publish
+        run: dotnet publish CSharp-Alerting-System.csproj -c Release --no-restore -o publish
+      - name: Build image
+        run: docker build -t sky-alert-engine:ci .
+      - name: Verify non-root image
+        run: test "$(docker inspect -f '{{.Config.User}}' sky-alert-engine:ci)" != "" && test "$(docker inspect -f '{{.Config.User}}' sky-alert-engine:ci)" != "0"
+      - name: Runtime smoke
+        run: |
+          docker run --rm -d --name sky-alert-engine -p 18080:8080 sky-alert-engine:ci
+          trap 'docker rm -f sky-alert-engine >/dev/null 2>&1 || true' EXIT
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          docker logs sky-alert-engine
+          exit 1
