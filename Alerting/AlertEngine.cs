@@ -11,14 +11,30 @@ public sealed record AlertEvaluation(string Metric, double Value, double Thresho
 
 public static class AlertEngine
 {
+    public const int MaxMetricLength = 128;
+
     public static AlertEvaluation Evaluate(string metric, double value, double threshold)
     {
         if (string.IsNullOrWhiteSpace(metric))
+        {
             throw new ArgumentException("Metric is required.", nameof(metric));
-        if (double.IsNaN(value) || double.IsInfinity(value))
-            throw new ArgumentOutOfRangeException(nameof(value));
-        if (double.IsNaN(threshold) || double.IsInfinity(threshold) || threshold < 0)
-            throw new ArgumentOutOfRangeException(nameof(threshold));
+        }
+
+        var normalizedMetric = metric.Trim();
+        if (normalizedMetric.Length > MaxMetricLength)
+        {
+            throw new ArgumentException($"Metric must be at most {MaxMetricLength} characters.", nameof(metric));
+        }
+
+        if (!double.IsFinite(value))
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "Value must be finite.");
+        }
+
+        if (!double.IsFinite(threshold) || threshold < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(threshold), "Threshold must be finite and non-negative.");
+        }
 
         var severity = value > threshold * 1.5
             ? AlertSeverity.Critical
@@ -26,6 +42,6 @@ public static class AlertEngine
                 ? AlertSeverity.Warning
                 : AlertSeverity.Ok;
 
-        return new AlertEvaluation(metric.Trim(), value, threshold, severity);
+        return new AlertEvaluation(normalizedMetric, value, threshold, severity);
     }
 }
