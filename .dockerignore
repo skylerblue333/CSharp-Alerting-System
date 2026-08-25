@@ -1,0 +1,9 @@
+.git
+.github
+bin
+obj
+tests
+README.md
+SECURITY.md
+CHANGELOG.md
+*.md
